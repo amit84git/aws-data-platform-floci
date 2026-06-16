@@ -1,0 +1,43 @@
+# FloCI Data Platform - gitignore
+
+# Environment data
+.data/
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+*.terraform.lock.hcl
+crash.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Secrets (DO NOT COMMIT)
+*.key
+*.pem
+*.cert
+secrets/
+.env.local
+.env.prod
+
+# Logs
+*.log

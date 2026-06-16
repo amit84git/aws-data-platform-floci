@@ -1,0 +1,253 @@
+{
+  "title": "FloCI Partner Ingestion Dashboard",
+  "uid": "floci-ingestion",
+  "version": 1,
+  "schemaVersion": 36,
+  "timezone": "browser",
+  "editable": true,
+  "refresh": "10s",
+  "panels": [
+    {
+      "title": "Workflow Runs (Last 24h)",
+      "type": "stat",
+      "gridPos": {"h": 6, "w": 4, "x": 0, "y": 0},
+      "id": 1,
+      "targets": [
+        {
+          "datasource": "FloCI Metrics",
+          "rawSql": "SELECT COUNT(*) FROM workflow_metrics WHERE event_type = 'workflow_completed' AND created_at > NOW() - INTERVAL '24 hours'",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 80}
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Successful Runs",
+      "type": "stat",
+      "gridPos": {"h": 6, "w": 4, "x": 4, "y": 0},
+      "id": 2,
+      "targets": [
+        {
+          "datasource": "FloCI Metrics",
+          "rawSql": "SELECT COUNT(*) FROM workflow_metrics WHERE event_type = 'workflow_completed' AND event_data->>'status' = 'success' AND created_at > NOW() - INTERVAL '24 hours'",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "fixed", "fixedColor": "green"},
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+          "unit": "none"
+        }
+      }
+    },
+    {
+      "title": "Failed Runs",
+      "type": "stat",
+      "gridPos": {"h": 6, "w": 4, "x": 8, "y": 0},
+      "id": 3,
+      "targets": [
+        {
+          "datasource": "FloCI Metrics",
+          "rawSql": "SELECT COUNT(*) FROM workflow_metrics WHERE event_type = 'workflow_completed' AND event_data->>'status' = 'failed' AND created_at > NOW() - INTERVAL '24 hours'",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "fixed", "fixedColor": "red"},
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}]},
+          "unit": "none"
+        }
+      }
+    },
+    {
+      "title": "Files Processed by Environment",
+      "type": "barchart",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 6},
+      "id": 4,
+      "targets": [
+        {
+          "datasource": "FloCI Metrics",
+          "rawSql": "SELECT event_data->>'environment' as environment, COUNT(*) as count FROM workflow_metrics WHERE event_type = 'file_processed' AND created_at > NOW() - INTERVAL '24 hours' GROUP BY environment ORDER BY environment",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "orientation": "auto",
+        "groupWidth": 0.7,
+        "showValue": "auto",
+        "legend": {"displayMode": "list", "placement": "bottom"}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "unit": "none"
+        }
+      }
+    },
+    {
+      "title": "Invalid Files by Environment",
+      "type": "barchart",
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 6},
+      "id": 5,
+      "targets": [
+        {
+          "datasource": "FloCI Metrics",
+          "rawSql": "SELECT environment, COUNT(*) as count FROM workflow_metrics WHERE event_type = 'file_invalid' AND created_at > NOW() - INTERVAL '24 hours' GROUP BY environment ORDER BY environment",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "orientation": "auto",
+        "groupWidth": 0.7,
+        "showValue": "auto",
+        "legend": {"displayMode": "list", "placement": "bottom"}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "unit": "none"
+        }
+      }
+    },
+    {
+      "title": "Workflow Runs Timeline",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 16, "x": 0, "y": 14},
+      "id": 6,
+      "targets": [
+        {
+          "datasource": "FloCI Metrics",
+          "rawSql": "SELECT DATE_TRUNC('minute', created_at) AS time, COUNT(*) AS value FROM workflow_metrics WHERE event_type = 'workflow_completed' AND created_at > NOW() - INTERVAL '24 hours' GROUP BY time ORDER BY time",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "legend": {"displayMode": "list", "placement": "bottom"},
+        "tooltip": {"mode": "multi"}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "lineInterpolation": "smooth",
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "unit": "none"
+        }
+      }
+    },
+    {
+      "title": "Processing Errors (Last 24h)",
+      "type": "table",
+      "gridPos": {"h": 10, "w": 16, "x": 0, "y": 22},
+      "id": 7,
+      "targets": [
+        {
+          "datasource": "FloCI Metrics",
+          "rawSql": "SELECT created_at, event_data->>'file' as file, event_data->>'errors' as errors FROM workflow_metrics WHERE event_type = 'file_invalid' AND created_at > NOW() - INTERVAL '24 hours' ORDER BY created_at DESC LIMIT 50",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "sortBy": [{"displayName": "Time", "desc": true}]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "custom": {
+            "align": "left",
+            "displayMode": "auto"
+          },
+          "mappings": []
+        }
+      }
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "environment",
+        "type": "query",
+        "query": "SELECT DISTINCT environment FROM workflow_metrics",
+        "datasource": "FloCI Metrics",
+        "refresh": 1,
+        "includeAll": true,
+        "allValue": "",
+        "multi": true,
+        "label": "Environment"
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Workflow Errors",
+        "datasource": "FloCI Metrics",
+        "enable": true,
+        "rawQuery": "SELECT created_at, event_data->>'file' as text FROM workflow_metrics WHERE event_type = 'file_error' AND created_at > NOW() - INTERVAL '24 hours'"
+      }
+    ]
+  }
+}

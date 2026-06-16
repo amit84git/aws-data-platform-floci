@@ -1,0 +1,5 @@
+partner_id,date,amount,currency
+1,2026-01-01,100.00,USD
+abc,not-a-date,-50.00,INVALID
+3,2026-13-01,75.25,US
+4,2026-01-02,,GBP

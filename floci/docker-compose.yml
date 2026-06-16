@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  # S3-compatible object storage
+  minio:
+    image: minio/minio:latest
+    container_name: floci-minio
+    ports:
+      - "9000:9000"   # API
+      - "9001:9001"   # Console
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Create initial buckets (no PostgreSQL, no cron, fully event-driven)
+  minio-init:
+    image: minio/mc:latest
+    container_name: floci-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin;
+      mc mb -p local/ingestion-raw;
+      mc mb -p local/ingestion-good;
+      mc mb -p local/ingestion-quarantine;
+      mc mb -p local/ingestion-audit;
+      echo 'Buckets created: raw, good, quarantine, audit';
+      "
+
+  # FloCI S3 Event Router - EventBridge-style handler for S3 object creation
+  # Triggers on new file drops to ingestion-raw bucket, validates, and routes:
+  #   - Good/valid data  -> ingestion-good bucket
+  #   - Bad/inconsistent -> ingestion-quarantine bucket
+  # All pipeline events are logged to ingestion-audit bucket
+  floci-s3-event-router:
+    build:
+      context: ../.
+      dockerfile: floci/Dockerfile.s3_event_router
+    container_name: floci-s3-event-router
+    ports:
+      - "8081:8081"
+    environment:
+      STORAGE_ENDPOINT: http://minio:9000
+      STORAGE_ACCESS_KEY: minioadmin
+      STORAGE_SECRET_KEY: minioadmin
+      STORAGE_BUCKET_RAW: ingestion-raw
+      STORAGE_BUCKET_GOOD: ingestion-good
+      STORAGE_BUCKET_QUARANTINE: ingestion-quarantine
+      STORAGE_BUCKET_AUDIT: ingestion-audit
+      ENVIRONMENT: local
+    depends_on:
+      minio:
+        condition: service_healthy
+    volumes:
+      - ../lambdas:/app/lambdas
+
+  # FloCI EventBridge Simulator - watches for new files in raw bucket and triggers the router
+  floci-eventbridge-simulator:
+    build:
+      context: ../.
+      dockerfile: floci/Dockerfile.eventbridge
+    container_name: floci-eventbridge-simulator
+    environment:
+      STORAGE_ENDPOINT: http://minio:9000
+      STORAGE_ACCESS_KEY: minioadmin
+      STORAGE_SECRET_KEY: minioadmin
+      STORAGE_BUCKET_RAW: ingestion-raw
+      ROUTER_API_URL: http://floci-s3-event-router:8081
+      POLL_INTERVAL_SECONDS: 5
+    depends_on:
+      minio:
+        condition: service_healthy
+      floci-s3-event-router:
+        condition: service_started
+
+  # Grafana for observability (reads audit logs from MinIO via S3 datasource)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: floci-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ../grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ../grafana/datasources:/etc/grafana/provisioning/datasources
+    depends_on:
+      - floci-s3-event-router
+
+volumes:
+  minio-data:
+  grafana-data:

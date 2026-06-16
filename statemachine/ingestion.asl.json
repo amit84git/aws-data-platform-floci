@@ -1,0 +1,84 @@
+{
+  "Comment": "Partner CSV Ingestion Pipeline - validates, processes, and routes files with observability",
+  "StartAt": "Validate CSV",
+  "States": {
+    "Validate CSV": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:local:function:validator",
+      "Parameters": {
+        "file_key.$": "$.file_key",
+        "content.$": "$.content",
+        "environment.$": "$.environment"
+      },
+      "Next": "Evaluate Validation"
+    },
+    "Evaluate Validation": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.valid",
+          "BooleanEquals": true,
+          "Next": "Process Valid File"
+        },
+        {
+          "Variable": "$.valid",
+          "BooleanEquals": false,
+          "Next": "Quarantine Invalid File"
+        }
+      ],
+      "Default": "Quarantine Invalid File"
+    },
+    "Process Valid File": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:local:function:processor",
+      "Parameters": {
+        "file_key.$": "$.file_key",
+        "content.$": "$.content",
+        "environment.$": "$.environment"
+      },
+      "Next": "Record Success Metrics"
+    },
+    "Quarantine Invalid File": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:local:function:quarantine",
+      "Parameters": {
+        "file_key.$": "$.file_key",
+        "content.$": "$.content",
+        "errors.$": "$.errors",
+        "original_bucket": "ingestion-raw",
+        "environment.$": "$.environment"
+      },
+      "Next": "Record Failure Metrics"
+    },
+    "Record Success Metrics": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:local:function:metrics",
+      "Parameters": {
+        "run_id.$": "$.run_id",
+        "workflow_name.$": "$.workflow_name",
+        "event_type": "workflow_completed",
+        "event_data": {
+          "status": "success",
+          "files_processed": 1
+        },
+        "environment.$": "$.environment"
+      },
+      "End": true
+    },
+    "Record Failure Metrics": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:local:function:metrics",
+      "Parameters": {
+        "run_id.$": "$.run_id",
+        "workflow_name.$": "$.workflow_name",
+        "event_type": "workflow_completed",
+        "event_data": {
+          "status": "failed",
+          "files_invalid": 1
+        },
+        "environment.$": "$.environment"
+      },
+      "End": true
+    }
+  }
+}
