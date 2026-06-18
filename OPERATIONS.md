@@ -39,6 +39,7 @@ This version of FloCI has been refactored from a PostgreSQL + cron-based archite
    - **Routes** valid data to `ingestion-good` with enrichment columns
    - **Routes** invalid data to `ingestion-quarantine` with manifest
    - **Logs** the entire pipeline event to `ingestion-audit`
+   - **Deletes** the original file from `ingestion-raw` (post-processing cleanup)
 5. **Result** is reflected immediately in the S3 bucket contents
 
 ## Common Operations
@@ -213,6 +214,10 @@ with open('/tmp/quarantined.csv', 'rb') as f:
 print('Re-uploaded - will be processed by EventBridge')
 "
 ```
+
+### Re-uploading Files After Processing
+
+Since the pipeline automatically deletes files from `ingestion-raw` after processing, you can simply upload the same file again to retrigger processing. The EventBridge Simulator will detect it as a new object.
 
 ### Full Pipeline Reset
 

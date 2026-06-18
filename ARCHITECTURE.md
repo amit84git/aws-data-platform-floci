@@ -33,11 +33,11 @@ FloCI is a **local-first data ingestion platform** that validates, processes, an
 
 ### 3. S3 Event Router Lambda (Single Lambda Instead of Multiple)
 
-**Decision:** Combine validation, processing, routing, and audit logging into a single S3 Event Router Lambda.
+**Decision:** Combine validation, processing, routing, audit logging, and source cleanup into a single S3 Event Router Lambda.
 
 **Rationale:**
 
-- **Simpler data flow:** A single Lambda reads from the source bucket, validates, enriches good data, quarantines bad data, and writes audit logs - all in one invocation. No need for a state machine or multiple chained functions.
+- **Simpler data flow:** A single Lambda reads from the source bucket, validates, enriches good data, quarantines bad data, writes audit logs, and deletes the original file from the source bucket - all in one invocation. No need for a state machine or multiple chained functions.
 - **Lower latency:** File is processed in a single pass rather than being read, written, and re-read by multiple functions.
 - **Easier debugging:** Complete processing trace for a file is in one log entry.
 - **Still AWS Lambda-compatible:** The `lambda_handler(event, context)` interface is identical to AWS Lambda, so it can run on AWS Lambda without modification.
@@ -101,6 +101,8 @@ Partner File Drop (S3 PutObject)
                              │    │  Bucket    │     │
                              │    └───────────┘     │
                              │  4. Write Audit Log  │
+                             │  5. Delete source    │
+                             │     file from raw    │
                              └──────────┬───────────┘
                                         │
                     ┌───────────────────┼───────────────────┐

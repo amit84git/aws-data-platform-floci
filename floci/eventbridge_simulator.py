@@ -184,8 +184,12 @@ def main():
                     # Don't add to known files - will retry on next poll
                     logger.info(f"Will retry '{file_key}' on next poll cycle")
 
-            # Update known files list (in case files were deleted externally)
-            known_files = current_files | known_files
+            # Prune known files: only keep files that have been successfully processed.
+            # Files currently in the bucket but not yet processed stay in the set,
+            # while files deleted from the bucket (after processing) remain known
+            # so they won't be re-processed if re-uploaded with the same key.
+            # To force re-processing, delete the state file at /tmp/eventbridge_processed_files.json
+            known_files = current_files | (known_files - current_files)
 
             time.sleep(POLL_INTERVAL)
 

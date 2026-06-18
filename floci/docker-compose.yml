@@ -92,7 +92,7 @@ services:
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
-      GF_INSTALL_PLUGINS: grafana-piechart-panel
+      GF_INSTALL_PLUGINS: grafana-piechart-panel,yesoreyeram-infinity-datasource
     volumes:
       - grafana-data:/var/lib/grafana
       - ../grafana/dashboards:/etc/grafana/provisioning/dashboards

@@ -1,22 +1,24 @@
 {
   "title": "FloCI Partner Ingestion Dashboard",
   "uid": "floci-ingestion",
-  "version": 1,
+  "version": 2,
   "schemaVersion": 36,
   "timezone": "browser",
   "editable": true,
-  "refresh": "10s",
+  "refresh": "30s",
   "panels": [
     {
-      "title": "Workflow Runs (Last 24h)",
+      "title": "Total Pipeline Events (Last 24h)",
       "type": "stat",
       "gridPos": {"h": 6, "w": 4, "x": 0, "y": 0},
       "id": 1,
       "targets": [
         {
-          "datasource": "FloCI Metrics",
-          "rawSql": "SELECT COUNT(*) FROM workflow_metrics WHERE event_type = 'workflow_completed' AND created_at > NOW() - INTERVAL '24 hours'",
-          "format": "table",
+          "datasource": "FloCI Audit Logs (S3)",
+          "queryType": "json",
+          "url": "http://floci-s3-event-router:8081/api/v1/metrics",
+          "source": "url",
+          "jsonPath": "$.total_events",
           "refId": "A"
         }
       ],
@@ -49,15 +51,17 @@
       }
     },
     {
-      "title": "Successful Runs",
+      "title": "Good Files Routed",
       "type": "stat",
       "gridPos": {"h": 6, "w": 4, "x": 4, "y": 0},
       "id": 2,
       "targets": [
         {
-          "datasource": "FloCI Metrics",
-          "rawSql": "SELECT COUNT(*) FROM workflow_metrics WHERE event_type = 'workflow_completed' AND event_data->>'status' = 'success' AND created_at > NOW() - INTERVAL '24 hours'",
-          "format": "table",
+          "datasource": "FloCI Audit Logs (S3)",
+          "queryType": "json",
+          "url": "http://floci-s3-event-router:8081/api/v1/metrics",
+          "source": "url",
+          "jsonPath": "$.good_files",
           "refId": "A"
         }
       ],
@@ -83,15 +87,17 @@
       }
     },
     {
-      "title": "Failed Runs",
+      "title": "Quarantined Files",
       "type": "stat",
       "gridPos": {"h": 6, "w": 4, "x": 8, "y": 0},
       "id": 3,
       "targets": [
         {
-          "datasource": "FloCI Metrics",
-          "rawSql": "SELECT COUNT(*) FROM workflow_metrics WHERE event_type = 'workflow_completed' AND event_data->>'status' = 'failed' AND created_at > NOW() - INTERVAL '24 hours'",
-          "format": "table",
+          "datasource": "FloCI Audit Logs (S3)",
+          "queryType": "json",
+          "url": "http://floci-s3-event-router:8081/api/v1/metrics",
+          "source": "url",
+          "jsonPath": "$.quarantine_files",
           "refId": "A"
         }
       ],
@@ -117,16 +123,22 @@
       }
     },
     {
-      "title": "Files Processed by Environment",
+      "title": "Events by Type",
       "type": "barchart",
       "gridPos": {"h": 8, "w": 8, "x": 0, "y": 6},
       "id": 4,
       "targets": [
         {
-          "datasource": "FloCI Metrics",
-          "rawSql": "SELECT event_data->>'environment' as environment, COUNT(*) as count FROM workflow_metrics WHERE event_type = 'file_processed' AND created_at > NOW() - INTERVAL '24 hours' GROUP BY environment ORDER BY environment",
-          "format": "table",
-          "refId": "A"
+          "datasource": "FloCI Audit Logs (S3)",
+          "queryType": "json",
+          "url": "http://floci-s3-event-router:8081/api/v1/metrics",
+          "source": "url",
+          "jsonPath": "$.events_by_type",
+          "refId": "A",
+          "columns": [
+            {"selector": "event_type", "text": "Event Type", "type": "string"},
+            {"selector": "count", "text": "Count", "type": "number"}
+          ]
         }
       ],
       "options": {
@@ -143,42 +155,58 @@
       }
     },
     {
-      "title": "Invalid Files by Environment",
-      "type": "barchart",
-      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 6},
+      "title": "Errors (Last 24h)",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 4, "x": 8, "y": 6},
       "id": 5,
       "targets": [
         {
-          "datasource": "FloCI Metrics",
-          "rawSql": "SELECT environment, COUNT(*) as count FROM workflow_metrics WHERE event_type = 'file_invalid' AND created_at > NOW() - INTERVAL '24 hours' GROUP BY environment ORDER BY environment",
-          "format": "table",
+          "datasource": "FloCI Audit Logs (S3)",
+          "queryType": "json",
+          "url": "http://floci-s3-event-router:8081/api/v1/metrics",
+          "source": "url",
+          "jsonPath": "$.errors",
           "refId": "A"
         }
       ],
       "options": {
-        "orientation": "auto",
-        "groupWidth": 0.7,
-        "showValue": "auto",
-        "legend": {"displayMode": "list", "placement": "bottom"}
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
       },
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {"mode": "fixed", "fixedColor": "orange"},
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
           "unit": "none"
         }
       }
     },
     {
-      "title": "Workflow Runs Timeline",
+      "title": "Pipeline Events Timeline",
       "type": "timeseries",
       "gridPos": {"h": 8, "w": 16, "x": 0, "y": 14},
       "id": 6,
       "targets": [
         {
-          "datasource": "FloCI Metrics",
-          "rawSql": "SELECT DATE_TRUNC('minute', created_at) AS time, COUNT(*) AS value FROM workflow_metrics WHERE event_type = 'workflow_completed' AND created_at > NOW() - INTERVAL '24 hours' GROUP BY time ORDER BY time",
-          "format": "table",
-          "refId": "A"
+          "datasource": "FloCI Audit Logs (S3)",
+          "queryType": "json",
+          "url": "http://floci-s3-event-router:8081/api/v1/metrics",
+          "source": "url",
+          "jsonPath": "$.events_timeline",
+          "refId": "A",
+          "columns": [
+            {"selector": "time", "text": "Time", "type": "string"},
+            {"selector": "count", "text": "Count", "type": "number"}
+          ]
         }
       ],
       "options": {
@@ -198,20 +226,28 @@
       }
     },
     {
-      "title": "Processing Errors (Last 24h)",
+      "title": "Recent Audit Logs",
       "type": "table",
       "gridPos": {"h": 10, "w": 16, "x": 0, "y": 22},
       "id": 7,
       "targets": [
         {
-          "datasource": "FloCI Metrics",
-          "rawSql": "SELECT created_at, event_data->>'file' as file, event_data->>'errors' as errors FROM workflow_metrics WHERE event_type = 'file_invalid' AND created_at > NOW() - INTERVAL '24 hours' ORDER BY created_at DESC LIMIT 50",
-          "format": "table",
-          "refId": "A"
+          "datasource": "FloCI Audit Logs (S3)",
+          "queryType": "json",
+          "url": "http://floci-s3-event-router:8081/api/v1/metrics",
+          "source": "url",
+          "jsonPath": "$",
+          "refId": "A",
+          "columns": [
+            {"selector": "total_events", "text": "Total Events", "type": "number"},
+            {"selector": "good_files", "text": "Good Files", "type": "number"},
+            {"selector": "quarantine_files", "text": "Quarantined", "type": "number"},
+            {"selector": "errors", "text": "Errors", "type": "number"}
+          ]
         }
       ],
       "options": {
-        "sortBy": [{"displayName": "Time", "desc": true}]
+        "sortBy": [{"displayName": "Total Events", "desc": true}]
       },
       "fieldConfig": {
         "defaults": {
@@ -226,28 +262,9 @@
     }
   ],
   "templating": {
-    "list": [
-      {
-        "name": "environment",
-        "type": "query",
-        "query": "SELECT DISTINCT environment FROM workflow_metrics",
-        "datasource": "FloCI Metrics",
-        "refresh": 1,
-        "includeAll": true,
-        "allValue": "",
-        "multi": true,
-        "label": "Environment"
-      }
-    ]
+    "list": []
   },
   "annotations": {
-    "list": [
-      {
-        "name": "Workflow Errors",
-        "datasource": "FloCI Metrics",
-        "enable": true,
-        "rawQuery": "SELECT created_at, event_data->>'file' as text FROM workflow_metrics WHERE event_type = 'file_error' AND created_at > NOW() - INTERVAL '24 hours'"
-      }
-    ]
+    "list": []
   }
 }

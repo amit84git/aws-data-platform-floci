@@ -375,6 +375,28 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     severity="WARN",
                 )
 
+            # --- Step 4: Clean up - delete original file from source bucket ---
+            try:
+                s3.delete_object(Bucket=source_bucket, Key=file_key)
+                _write_audit_log(
+                    s3, "file_deleted_from_source", "s3_event_router",
+                    {
+                        "file_key": file_key,
+                        "bucket": source_bucket,
+                    },
+                )
+            except Exception as e:
+                # Non-fatal: log the failure but don't fail the pipeline
+                _write_audit_log(
+                    s3, "file_delete_failed", "s3_event_router",
+                    {
+                        "file_key": file_key,
+                        "bucket": source_bucket,
+                        "error": str(e),
+                    },
+                    severity="WARN",
+                )
+
             results["processed_files"].append(file_result)
 
         except ClientError as e:

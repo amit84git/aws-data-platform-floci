@@ -3,7 +3,7 @@
 # FloCI Platform Bootstrap Script
 # =============================================================================
 # Provisions the entire local platform: MinIO, EventBridge Simulator,
-# S3 Event Router, Grafana. Fully event-driven - no PostgreSQL, no cron.
+# S3 Event Router, Grafana. Fully event-driven 
 # Usage: ./scripts/bootstrap.sh [environment]
 #   environment: dev | test | prod  (default: dev)
 # =============================================================================

@@ -11,7 +11,10 @@ import os
 import sys
 import json
 import logging
-from typing import Dict, Any
+import boto3
+from datetime import datetime, timedelta
+from typing import Dict, Any, List, Optional
+from collections import Counter
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -43,6 +46,68 @@ class S3Notification(BaseModel):
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "floci-s3-event-router"}
+
+
+@app.get("/api/v1/metrics")
+async def get_metrics():
+    """
+    Aggregate pipeline metrics from S3 audit logs for Grafana dashboards.
+    Returns counts of good, quarantine, and error events with timestamps.
+    """
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=os.getenv("STORAGE_ENDPOINT", "http://minio:9000"),
+        aws_access_key_id=os.getenv("STORAGE_ACCESS_KEY", "minioadmin"),
+        aws_secret_access_key=os.getenv("STORAGE_SECRET_KEY", "minioadmin"),
+    )
+    audit_bucket = os.getenv("STORAGE_BUCKET_AUDIT", "ingestion-audit")
+    
+    # List audit logs from last 24 hours
+    prefix = f"audit-logs/{(datetime.utcnow() - timedelta(hours=24)).strftime('%Y/%m/%d')}"
+    try:
+        resp = s3.list_objects_v2(Bucket=audit_bucket, Prefix=prefix)
+    except Exception:
+        # No logs yet
+        return {
+            "total_events": 0,
+            "good_files": 0,
+            "quarantine_files": 0,
+            "errors": 0,
+            "events_by_type": [],
+            "events_timeline": [],
+        }
+    
+    logs = []
+    for obj in resp.get("Contents", []):
+        try:
+            data = s3.get_object(Bucket=audit_bucket, Key=obj["Key"])
+            log_entry = json.loads(data["Body"].read())
+            logs.append(log_entry)
+        except Exception:
+            continue
+    
+    # Aggregate
+    event_types = Counter(log.get("event_type") for log in logs)
+    severities = Counter(log.get("severity") for log in logs)
+    
+    # Timeline: bucket by hour
+    hourly = Counter()
+    for log in logs:
+        ts = log.get("timestamp", "")
+        try:
+            hour_key = ts[:13] + ":00:00"  # Group by hour
+        except Exception:
+            hour_key = "unknown"
+        hourly[hour_key] += 1
+    
+    return {
+        "total_events": len(logs),
+        "good_files": event_types.get("file_routed_good", 0),
+        "quarantine_files": event_types.get("file_routed_quarantine", 0),
+        "errors": severities.get("ERROR", 0),
+        "events_by_type": [{"event_type": k, "count": v} for k, v in event_types.items()],
+        "events_timeline": [{"time": k, "count": v} for k, v in sorted(hourly.items())],
+    }
 
 
 @app.post("/api/v1/process-event")

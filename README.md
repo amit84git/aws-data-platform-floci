@@ -142,6 +142,10 @@ File Drop (S3 PutObject) ──► EventBridge Simulator ──► S3 Event Rout
                                                            │
                                                       ingestion-
                                                       audit (logs)
+                                                           │
+                                                           v
+                                              ✗ Source file deleted
+                                              from ingestion-raw
 ```
 
 **Key differences from traditional architectures:**
@@ -150,6 +154,7 @@ File Drop (S3 PutObject) ──► EventBridge Simulator ──► S3 Event Rout
 - **No cron jobs** - EventBridge detects new files in real-time
 - **Complete audit trail** - every pipeline event is logged to the audit S3 bucket
 - **Fully event-driven** - files flow through the pipeline immediately upon arrival
+- **Source cleanup** - original files are automatically deleted from the raw bucket after processing
 
 ## Teardown
 

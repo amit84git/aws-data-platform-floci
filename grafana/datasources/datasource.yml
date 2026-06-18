@@ -1,4 +1,6 @@
 # Grafana datasource provisioning for FloCI observability
+# Reads pipeline metrics from S3 audit logs stored in MinIO (ingestion-audit bucket)
+# Uses Infinity datasource plugin to query S3 objects via MinIO's S3-compatible API
 apiVersion: 1
 
 deleteDatasources:
@@ -6,27 +8,15 @@ deleteDatasources:
     orgId: 1
 
 datasources:
-  - name: FloCI Metrics
-    type: postgres
+  - name: FloCI Audit Logs (S3)
+    type: yesoreyeram-infinity-datasource
     access: proxy
-    url: metrics-db:5432
-    database: floci_metrics
-    user: floci
+    url: http://minio:9000
+    basicAuth: true
+    basicAuthUser: minioadmin
     secureJsonData:
-      password: floci
+      basicAuthPassword: minioadmin
     jsonData:
-      sslmode: disable
-      postgresVersion: 1500
-      timescaledb: false
-  - name: FloCI Engine DB
-    type: postgres
-    access: proxy
-    url: metrics-db:5432
-    database: floci_metrics
-    user: floci
-    secureJsonData:
-      password: floci
-    jsonData:
-      sslmode: disable
-      postgresVersion: 1500
-      timescaledb: false
+      allowedHosts:
+        - http://minio:9000
+      tlsSkipVerify: true
