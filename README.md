@@ -26,12 +26,12 @@
 
 The bootstrap script provisions:
 
-| Service                   | Purpose                                   | URL                        |
-| ------------------------- | ----------------------------------------- | -------------------------- |
-| **S3 Event Router**       | EventBridge-triggered Lambda (REST API)   | http://localhost:8081/docs |
-| **EventBridge Simulator** | Watches S3 for new files, triggers router | (internal)                 |
-| **MinIO**                 | S3-compatible object storage              | http://localhost:9001      |
-| **Grafana**               | Observability via S3 audit logs           | http://localhost:3000      |
+| Service                   | Purpose                                                     | URL                        |
+| ------------------------- | ----------------------------------------------------------- | -------------------------- |
+| **S3 Event Router**       | EventBridge-triggered Lambda + Metrics REST API             | http://localhost:8081/docs |
+| **EventBridge Simulator** | Watches S3 for new files, triggers router                   | (internal)                 |
+| **MinIO**                 | S3-compatible object storage (raw, good, quarantine, audit) | http://localhost:9001      |
+| **Grafana**               | Observability via Infinity datasource → REST API            | http://localhost:3000      |
 
 Sample data is automatically seeded into MinIO's `ingestion-raw` bucket:
 
@@ -100,11 +100,11 @@ print('File uploaded - EventBridge will auto-trigger processing')
 │       └── storage.py
 ├── lambdas/                        # Lambda function implementations
 │   ├── s3_event_router/app.py      # ** Main: EventBridge-triggered S3 router **
-│   ├── validator/app.py            # Legacy: CSV validation (used internally by router)
-│   ├── processor/app.py            # Legacy: CSV processing (used internally by router)
-│   ├── quarantine/app.py           # Legacy: quarantine (used internally by router)
-│   ├── metrics/app.py              # Legacy: metrics (replaced by audit logger)
-│   └── audit_logger/app.py         # ** New: S3 audit logging Lambda **
+│   ├── validator/app.py            # Legacy (kept for reference - logic now in s3_event_router)
+│   ├── processor/app.py            # Legacy (kept for reference - logic now in s3_event_router)
+│   ├── quarantine/app.py           # Legacy (kept for reference - logic now in s3_event_router)
+│   ├── metrics/app.py              # Legacy (kept for reference - replaced by audit logging)
+│   └── audit_logger/app.py         # Legacy (kept for reference - replaced by s3_event_router's _write_audit_log)
 ├── statemachine/                   # Legacy: Step Functions definitions
 │   └── ingestion.asl.json
 ├── terraform/                      # Infrastructure as Code

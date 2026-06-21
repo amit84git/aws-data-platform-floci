@@ -11,13 +11,13 @@ This version of FloCI has been refactored from a PostgreSQL + cron-based archite
 
 ## Service Components
 
-| Service                       | Description                                    | Port |
-| ----------------------------- | ---------------------------------------------- | ---- |
-| `minio`                       | S3-compatible object storage (MinIO)           | 9000 |
-| `minio-init`                  | Creates buckets on startup (runs once)         | -    |
-| `floci-s3-event-router`       | FastAPI wrapper for the S3 Event Router Lambda | 8081 |
-| `floci-eventbridge-simulator` | Watches S3, triggers router on new objects     | -    |
-| `grafana`                     | Observability dashboards                       | 3000 |
+| Service                       | Description                                                 | Port |
+| ----------------------------- | ----------------------------------------------------------- | ---- |
+| `minio`                       | S3-compatible object storage (MinIO)                        | 9000 |
+| `minio-init`                  | Creates buckets (raw, good, quarantine, audit) on startup   | -    |
+| `floci-s3-event-router`       | FastAPI wrapper: routes files + exposes metrics REST API    | 8081 |
+| `floci-eventbridge-simulator` | Watches S3, triggers router on new objects (polls every 5s) | -    |
+| `grafana`                     | Observability via Infinity datasource querying metrics API  | 3000 |
 
 ## S3 Buckets
 
@@ -241,7 +241,35 @@ rm -rf .data/
 3. **Router logs** - processing time and error rates
 4. **Audit logs in S3** - complete pipeline traceability
 
-### Accessing Metrics via Audit Logs
+### Accessing Metrics via REST API
+
+The S3 Event Router exposes a built-in metrics aggregation endpoint at `GET /api/v1/metrics`. This endpoint reads audit logs from the `ingestion-audit` bucket (last 24 hours) and returns pre-aggregated JSON:
+
+```bash
+# Quick check via curl
+curl http://localhost:8081/api/v1/metrics
+
+# Example response:
+# {
+#   "total_events": 7,
+#   "good_files": 2,
+#   "quarantine_files": 5,
+#   "errors": 0,
+#   "events_by_type": [
+#     {"event_type": "file_routed_good", "count": 2},
+#     {"event_type": "file_routed_quarantine", "count": 5},
+#     ...
+#   ],
+#   "events_timeline": [
+#     {"time": "2026-06-21T16:00:00", "count": 3},
+#     ...
+#   ]
+# }
+```
+
+This endpoint is what Grafana's Infinity datasource queries for dashboard panels.
+
+### Accessing Metrics via Audit Logs (Direct S3)
 
 ```bash
 # Count good vs quarantine events

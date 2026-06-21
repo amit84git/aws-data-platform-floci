@@ -53,13 +53,26 @@ FloCI is a **local-first data ingestion platform** that validates, processes, an
 
 - **Complete audit trail:** Every pipeline event (file read, validation result, routing decision, error) is logged as a structured JSON document with timestamps, severity, and contextual metadata.
 - **Immutable logs:** Once written to S3, audit logs cannot be modified - providing a tamper-evident audit trail for security and compliance.
-- **No database to manage:** Audit logs can be queried using S3 Select, Athena, or imported into any log analysis tool.
+- **No database to manage:** Audit logs can be queried using S3 Select, Athena, or the built-in metrics API endpoint.
 - **Cost-effective:** S3 storage is significantly cheaper than running a database for log storage.
-- **Grafana can still visualize:** Grafana's S3 datasource or Athena connector can query audit logs for dashboarding.
+- **Grafana can still visualize:** Grafana's Infinity datasource queries the S3 Event Router's `GET /api/v1/metrics` REST API, which aggregates audit logs on-the-fly.
 
-**Tradeoff:** S3 lacks real-time query capabilities of PostgreSQL. Mitigation: For near-real-time dashboards, the EventBridge Simulator can also emit metrics to stdout (captured by container logging) or to a lightweight sink like CloudWatch Logs on AWS.
+**Tradeoff:** S3 lacks real-time query capabilities of PostgreSQL. Mitigation: The S3 Event Router exposes a `GET /api/v1/metrics` endpoint that aggregates the last 24 hours of audit logs into pre-computed counts, event breakdowns, and hourly timelines — suitable for Grafana rendering without external query engines.
 
-### 5. Single Lambda Function with Clean Internal Separation
+### 5. REST Metrics API Instead of Dedicated Metrics Database
+
+**Decision:** Provide observability via a REST API endpoint (`GET /api/v1/metrics`) on the S3 Event Router that aggregates S3 audit logs in-memory, rather than running a separate metrics database or Prometheus.
+
+**Rationale:**
+
+- **No additional infrastructure needed:** The metrics endpoint runs in the same process as the router — no separate database or service to manage.
+- **Self-contained observability:** The router reads audit logs from MinIO's `ingestion-audit` bucket, aggregates them (event types, severities, hourly timeline), and returns JSON suited for Grafana's Infinity datasource.
+- **Consistent with no-PostgreSQL philosophy:** All state lives in S3; the metrics API is just a read-only aggregator.
+- **Zero configuration:** No schema migrations, retention policies, or connection strings.
+
+**Tradeoff:** The aggregation is in-memory and reads all audit logs from the last 24 hours each time the endpoint is called. At scale, this would be replaced with Athena, S3 Select, or a Prometheus exporter. The 24-hour window is suitable for operational dashboards but not for historical trend analysis.
+
+### 6. Single Lambda Function with Clean Internal Separation
 
 **Decision:** The S3 Event Router Lambda handles the entire pipeline internally with well-separated concerns.
 
@@ -68,9 +81,11 @@ FloCI is a **local-first data ingestion platform** that validates, processes, an
 - The `lambda_handler` function reads the event, extracts file(s) to process, and orchestrates the pipeline.
 - `_validate_csv` / `_validate_row` handle validation logic (same as the old validator Lambda).
 - `_process_csv` handles enrichment (same as the old processor Lambda).
-- `_write_audit_log` handles structured logging (replaces the old metrics Lambda).
+- `_write_audit_log` handles structured logging (replaces the old metrics and audit_logger Lambdas).
 - Each internal function is independently testable and has a clear responsibility.
 - The interface mirrors AWS Lambda's exactly — `lambdas/s3_event_router/app.py` can run on real AWS Lambda without modification.
+
+**Note on legacy Lambdas:** The `lambdas/validator/`, `lambdas/processor/`, `lambdas/quarantine/`, `lambdas/metrics/`, and `lambdas/audit_logger/` directories are kept for reference but are not used at runtime. All functionality has been consolidated into `lambdas/s3_event_router/app.py`.
 
 ## Data Flow
 
@@ -114,16 +129,38 @@ Partner File Drop (S3 PutObject)
            └────────────┘    └──────────────┘    └──────────────┘
                                                    │
                                                    v
-                                           ┌──────────────┐
-                                           │  Grafana     │
-                                           │ (query audit │
-                                           │  logs via S3)│
-                                           └──────────────┘
+                                           ┌──────────────────┐
+                                           │  S3 Event Router │
+                                           │ GET /api/v1/     │
+                                           │   metrics        │
+                                           └────────┬─────────┘
+                                                    │
+                                                    v
+                                           ┌──────────────────┐
+                                           │  Grafana         │
+                                           │ (Infinity        │
+                                           │  datasource →    │
+                                           │  REST API)       │
+                                           └──────────────────┘
 ```
+
+### Observability Data Flow
+
+Grafana does **not** read from MinIO directly. Instead:
+
+1. The S3 Event Router exposes `GET /api/v1/metrics` which:
+   - Lists audit log objects from MinIO's `ingestion-audit` bucket (last 24 hours)
+   - Reads and parses each JSON log entry
+   - Aggregates counts by event type, severity, and hourly timeline
+   - Returns a JSON response with pre-computed metrics
+2. Grafana's Infinity datasource plugin queries this REST endpoint
+3. Each dashboard panel extracts its value using JSONPath expressions
+
+This eliminates the need for a dedicated metrics database or direct S3 querying from Grafana.
 
 ## Environment Strategy
 
-Three environments (`dev`, `test`, `prod`) are supported:
+Three environments (`dev`, `test`, `prod`) are supported for Terraform/AWS deployment:
 
 | Aspect        | dev                           | test                           | prod                                              |
 | ------------- | ----------------------------- | ------------------------------ | ------------------------------------------------- |
@@ -134,6 +171,8 @@ Three environments (`dev`, `test`, `prod`) are supported:
 
 Environment isolation in Terraform is achieved through separate `main.tf` files in `terraform/envs/{dev,test,prod}/`, each calling the shared `modules/platform` module with different variables.
 
+**Local environment:** The Docker Compose stack runs with `ENVIRONMENT=local` (not `dev`/`test`/`prod`). This is a dedicated environment variable that doesn't overlap with the Terraform environments.
+
 ## Bucket Structure
 
 | Bucket                 | Purpose                                          | Access Pattern           |
@@ -142,6 +181,17 @@ Environment isolation in Terraform is achieved through separate `main.tf` files 
 | `ingestion-good`       | Valid, processed CSV data with enrichment        | Read: Downstream systems |
 | `ingestion-quarantine` | Invalid/inconsistent files with manifest         | Read: Manual review      |
 | `ingestion-audit`      | Structured JSON audit logs (all pipeline events) | Read: Security, audit    |
+
+## API Endpoints
+
+The S3 Event Router (FastAPI) exposes the following REST endpoints:
+
+| Endpoint                   | Method | Purpose                                                            |
+| -------------------------- | ------ | ------------------------------------------------------------------ |
+| `/api/v1/process-event`    | POST   | Simulate EventBridge trigger; routes a file through the pipeline   |
+| `/api/v1/process-s3-event` | POST   | Simulate S3 notification; fetches file from MinIO and processes it |
+| `/api/v1/metrics`          | GET    | Aggregate pipeline metrics from S3 audit logs (last 24h)           |
+| `/api/v1/health`           | GET    | Health check                                                       |
 
 ## Security & Network Boundary
 
@@ -184,4 +234,31 @@ Each audit log entry is a structured JSON document stored in the `ingestion-audi
 }
 ```
 
+### Event Types
+
+| Event Type                 | Severity | Description                                     |
+| -------------------------- | -------- | ----------------------------------------------- |
+| `file_read`                | INFO     | File read from source bucket                    |
+| `file_routed_good`         | INFO     | Valid file routed to good data bucket           |
+| `file_routed_quarantine`   | WARN     | Invalid file routed to quarantine bucket        |
+| `file_deleted_from_source` | INFO     | Original file deleted from raw bucket           |
+| `file_delete_failed`       | WARN     | Failed to delete source file (non-fatal)        |
+| `file_error`               | ERROR    | Error processing file (S3 or unexpected error)  |
+| `batch_completed`          | INFO     | Summary of all files processed in a batch       |
+| `no_files`                 | WARN     | No files to process (unrecognized event format) |
+
 Audit log keys follow the pattern: `audit-logs/{YYYY}/{MM}/{DD}/{source}/{event_type}/{timestamp}.json`
+
+## Grafana Integration
+
+Grafana uses the **Infinity datasource plugin** to query the S3 Event Router's REST API:
+
+1. **Datasource:** `FloCI Audit Logs (S3)` (Infinity plugin, type: `yesoreyeram-infinity-datasource`)
+2. **Query URL:** `http://floci-s3-event-router:8081/api/v1/metrics`
+3. **Panels:** Stat, bar chart, time series, and table panels extract values via JSONPath
+
+This approach:
+
+- Requires no database setup (no PostgreSQL, no Prometheus)
+- Uses the same audit logs stored in S3 for both compliance and observability
+- Is fully self-contained within the Docker Compose stack
